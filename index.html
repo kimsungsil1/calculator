@@ -11,12 +11,12 @@
       --panel: #171a21;
       --text: #f2f4f8;
       --muted: #a9b0bd;
-      --accent: #5cc8ff;
+      --accent: #6bd3ff;
       --danger: #ff6b6b;
       --button: #222733;
       --button-active: #2c3342;
       --operator: #314056;
-      --equal: #4f8cff;
+      --equal: #5a8dff;
       --radius: 16px;
       --gap: 12px;
     }
@@ -37,7 +37,7 @@
     }
 
     .calculator {
-      width: min(480px, 100%);
+      width: min(520px, 100%);
       display: flex;
       flex-direction: column;
       gap: var(--gap);
@@ -57,11 +57,12 @@
       font-size: 1rem;
       color: var(--muted);
       min-height: 1.4em;
+      text-align: right;
       word-break: break-all;
     }
 
     .result {
-      font-size: clamp(2rem, 7vw, 3rem);
+      font-size: clamp(2.1rem, 8vw, 3.2rem);
       font-weight: 700;
       text-align: right;
       word-break: break-word;
@@ -92,6 +93,12 @@
       cursor: pointer;
       transition: transform 0.05s ease, background 0.2s ease;
       min-height: 56px;
+      width: 100%;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     button:active {
@@ -121,47 +128,19 @@
     }
 
     .keypad button {
-      font-size: 1.25rem;
+      font-size: 1.3rem;
       min-height: 64px;
+    }
+
+    .keypad .zero {
+      grid-column: span 2;
     }
 
     .placeholder {
       min-height: 64px;
     }
 
-    .note {
-      color: var(--muted);
-      font-size: 0.9rem;
-      text-align: center;
-      line-height: 1.5;
-      margin-top: 8px;
-    }
-
-    .test-panel {
-      background: var(--panel);
-      border-radius: var(--radius);
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 0.95rem;
-    }
-
-    .test-panel button {
-      width: 100%;
-    }
-
-    .test-output {
-      max-height: 140px;
-      overflow-y: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 0.85rem;
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 10px;
-      padding: 10px;
-    }
-
-    @media (max-width: 380px) {
+    @media (max-width: 400px) {
       .actions {
         grid-template-columns: 1fr;
       }
@@ -171,12 +150,12 @@
 <body>
   <main class="calculator" aria-label="Hangul Amount Calculator">
     <section class="display" aria-live="polite">
-      <div class="expression" id="expression">&nbsp;</div>
+      <div class="expression" id="expression">0</div>
       <div class="result" id="result">0</div>
       <div class="hangul" id="hangul">영</div>
     </section>
 
-    <section class="actions">
+    <section class="actions" aria-label="복사 도구">
       <button type="button" id="copyNumeric">숫자 복사</button>
       <button type="button" id="copyHangul">한글 복사</button>
     </section>
@@ -202,32 +181,25 @@
       <button type="button" data-action="digit" data-value="3">3</button>
       <button type="button" class="equal" data-action="equals">=</button>
 
-      <button type="button" data-action="digit" data-value="0">0</button>
+      <button type="button" class="zero" data-action="digit" data-value="0">0</button>
       <button type="button" data-action="decimal" data-value=".">.</button>
       <div class="placeholder" aria-hidden="true"></div>
-      <div class="placeholder" aria-hidden="true"></div>
     </section>
-
-    <section class="test-panel">
-      <button type="button" id="runTests">샘플 테스트</button>
-      <div class="test-output" id="testOutput" aria-live="polite"></div>
-    </section>
-
-    <p class="note">이 파일 하나로 오프라인 실행 가능합니다. (파일을 더블 클릭하여 실행)</p>
   </main>
 
   <script>
     const expressionEl = document.getElementById("expression");
     const resultEl = document.getElementById("result");
     const hangulEl = document.getElementById("hangul");
-    const testOutputEl = document.getElementById("testOutput");
 
     const STATE = {
       currentInput: "0",
       firstValue: null,
       operator: null,
       waitingForSecond: false,
-      lastResult: null,
+      error: false,
+      lastExpression: "",
+      errorState: null,
     };
 
     const OPERATORS = {
@@ -242,11 +214,35 @@
     const DIGITS = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
 
     function updateDisplay() {
+      if (STATE.error) {
+        expressionEl.textContent = STATE.lastExpression || "오류";
+        resultEl.textContent = "Error";
+        hangulEl.textContent = "오류";
+        return;
+      }
+      expressionEl.textContent = getExpressionText();
       resultEl.textContent = formatNumber(STATE.currentInput);
       hangulEl.textContent = hangulForDisplay(STATE.currentInput);
-      expressionEl.textContent = STATE.operator && STATE.firstValue !== null
-        ? `${formatNumber(String(STATE.firstValue))} ${STATE.operator}`
-        : "\u00A0";
+    }
+
+    function getExpressionText() {
+      if (STATE.operator && STATE.firstValue !== null) {
+        if (STATE.waitingForSecond) {
+          return `${formatNumber(String(STATE.firstValue))} ${STATE.operator}`;
+        }
+        return `${formatNumber(String(STATE.firstValue))} ${STATE.operator} ${formatNumber(STATE.currentInput)}`;
+      }
+      return formatNumber(STATE.currentInput);
+    }
+
+    function getExpressionSnapshot() {
+      if (STATE.operator && STATE.firstValue !== null) {
+        if (STATE.waitingForSecond) {
+          return `${formatNumber(String(STATE.firstValue))} ${STATE.operator}`;
+        }
+        return `${formatNumber(String(STATE.firstValue))} ${STATE.operator} ${formatNumber(STATE.currentInput)}`;
+      }
+      return formatNumber(STATE.currentInput);
     }
 
     function formatNumber(value) {
@@ -277,7 +273,6 @@
     }
 
     function hangulForDisplay(value) {
-      if (value === "Error") return "오류";
       const str = String(value);
       if (str.includes(".")) return "소수점 지원 예정";
       if (str === "Infinity" || str === "-Infinity") return "오류";
@@ -327,7 +322,17 @@
       return text;
     }
 
+    function parseInput(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function isErrorLocked() {
+      return STATE.error;
+    }
+
     function inputDigit(digit) {
+      if (isErrorLocked()) return;
       if (STATE.waitingForSecond) {
         STATE.currentInput = digit;
         STATE.waitingForSecond = false;
@@ -345,6 +350,7 @@
     }
 
     function inputDecimal() {
+      if (isErrorLocked()) return;
       if (STATE.waitingForSecond) {
         STATE.currentInput = "0.";
         STATE.waitingForSecond = false;
@@ -358,18 +364,23 @@
     }
 
     function handleOperator(nextOperator) {
+      if (isErrorLocked()) return;
       if (!OPERATORS[nextOperator]) return;
       if (STATE.operator && STATE.waitingForSecond) {
         STATE.operator = nextOperator;
         updateDisplay();
         return;
       }
-      const inputValue = Number(STATE.currentInput);
+      const inputValue = parseInput(STATE.currentInput);
+      if (inputValue === null) {
+        setError();
+        return;
+      }
       if (STATE.firstValue === null) {
         STATE.firstValue = inputValue;
       } else if (STATE.operator) {
         const result = calculate(STATE.firstValue, inputValue, STATE.operator);
-        if (result === null) {
+        if (result === null || Number.isNaN(result)) {
           setError();
           return;
         }
@@ -388,8 +399,16 @@
     }
 
     function handleEquals() {
+      if (STATE.error) {
+        attemptRecoverFromError();
+        return;
+      }
       if (!STATE.operator || STATE.waitingForSecond) return;
-      const inputValue = Number(STATE.currentInput);
+      const inputValue = parseInput(STATE.currentInput);
+      if (inputValue === null) {
+        setError();
+        return;
+      }
       const result = calculate(STATE.firstValue, inputValue, STATE.operator);
       if (result === null || Number.isNaN(result)) {
         setError();
@@ -402,17 +421,41 @@
       updateDisplay();
     }
 
-    function setError() {
-      STATE.currentInput = "Error";
+    function attemptRecoverFromError() {
+      if (!STATE.errorState) return;
+      const { firstValue, operator, currentInput, waitingForSecond } = STATE.errorState;
+      if (!operator || waitingForSecond) return;
+      const inputValue = parseInput(currentInput);
+      if (inputValue === null) return;
+      const result = calculate(firstValue, inputValue, operator);
+      if (result === null || Number.isNaN(result)) return;
+      STATE.error = false;
+      STATE.errorState = null;
+      STATE.lastExpression = "";
+      STATE.currentInput = String(result);
       STATE.firstValue = null;
       STATE.operator = null;
       STATE.waitingForSecond = false;
       updateDisplay();
     }
 
+    function setError() {
+      STATE.lastExpression = getExpressionSnapshot();
+      STATE.errorState = {
+        firstValue: STATE.firstValue,
+        operator: STATE.operator,
+        currentInput: STATE.currentInput,
+        waitingForSecond: STATE.waitingForSecond,
+      };
+      STATE.error = true;
+      updateDisplay();
+    }
+
     function handleBackspace() {
+      if (isErrorLocked()) return;
       if (STATE.waitingForSecond && STATE.operator) {
         STATE.operator = null;
+        STATE.waitingForSecond = false;
         updateDisplay();
         return;
       }
@@ -432,6 +475,9 @@
       STATE.firstValue = null;
       STATE.operator = null;
       STATE.waitingForSecond = false;
+      STATE.error = false;
+      STATE.lastExpression = "";
+      STATE.errorState = null;
       updateDisplay();
     }
 
@@ -443,35 +489,6 @@
       navigator.clipboard.writeText(text).catch(() => {
         alert("클립보드 복사에 실패했습니다.");
       });
-    }
-
-    function runTests() {
-      const tests = [
-        ["5000000", "오백만"],
-        ["12340000", "천이백삼십사만"],
-        ["1005000000", "십억 오백만"],
-        ["10000", "일만"],
-        ["105000", "십만 오천"],
-        ["0", "영"],
-        ["1", "일"],
-        ["10", "십"],
-        ["11", "십일"],
-        ["100", "백"],
-        ["101", "백일"],
-        ["1000", "천"],
-        ["1001", "천일"],
-      ];
-      const lines = [];
-      console.group("Hangul Amount Calculator Tests");
-      tests.forEach(([input, expected]) => {
-        const result = numberToHangul(BigInt(input));
-        const pass = result === expected;
-        const line = `${pass ? "✅" : "❌"} ${input} -> ${result} (expected: ${expected})`;
-        lines.push(line);
-        console.log(line);
-      });
-      console.groupEnd();
-      testOutputEl.textContent = lines.join("\n");
     }
 
     document.querySelectorAll(".keypad button").forEach((button) => {
@@ -489,14 +506,14 @@
     });
 
     document.getElementById("copyNumeric").addEventListener("click", () => {
-      copyText(formatNumber(STATE.currentInput));
+      const text = STATE.error ? "Error" : formatNumber(STATE.currentInput);
+      copyText(text);
     });
 
     document.getElementById("copyHangul").addEventListener("click", () => {
-      copyText(hangulForDisplay(STATE.currentInput));
+      const text = STATE.error ? "오류" : hangulForDisplay(STATE.currentInput);
+      copyText(text);
     });
-
-    document.getElementById("runTests").addEventListener("click", runTests);
 
     document.addEventListener("keydown", (event) => {
       if (event.key >= "0" && event.key <= "9") {
