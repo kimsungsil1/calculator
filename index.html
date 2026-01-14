@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hangul Amount Calculator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --text: #f2f4f8;
+      --muted: #a9b0bd;
+      --accent: #5cc8ff;
+      --danger: #ff6b6b;
+      --button: #222733;
+      --button-active: #2c3342;
+      --operator: #314056;
+      --equal: #4f8cff;
+      --radius: 16px;
+      --gap: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .calculator {
+      width: min(480px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+    }
+
+    .display {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .expression {
+      font-size: 1rem;
+      color: var(--muted);
+      min-height: 1.4em;
+      word-break: break-all;
+    }
+
+    .result {
+      font-size: clamp(2rem, 7vw, 3rem);
+      font-weight: 700;
+      text-align: right;
+      word-break: break-word;
+    }
+
+    .hangul {
+      font-size: 1.15rem;
+      color: var(--accent);
+      text-align: right;
+      min-height: 1.4em;
+      word-break: break-word;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 16px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: var(--button);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.05s ease, background 0.2s ease;
+      min-height: 56px;
+    }
+
+    button:active {
+      transform: translateY(1px);
+      background: var(--button-active);
+    }
+
+    button.operator {
+      background: var(--operator);
+      color: #d8e2ff;
+    }
+
+    button.equal {
+      background: var(--equal);
+      color: #0b1220;
+    }
+
+    button.danger {
+      background: #3b2222;
+      color: var(--danger);
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--gap);
+    }
+
+    .keypad button {
+      font-size: 1.25rem;
+      min-height: 64px;
+    }
+
+    .placeholder {
+      min-height: 64px;
+    }
+
+    @media (max-width: 380px) {
+      .actions {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="calculator" aria-label="Hangul Amount Calculator">
+    <section class="display" aria-live="polite">
+      <div class="expression" id="expression">&nbsp;</div>
+      <div class="result" id="result">0</div>
+      <div class="hangul" id="hangul">영</div>
+    </section>
+
+    <section class="actions">
+      <button type="button" id="copyNumeric">숫자 복사</button>
+      <button type="button" id="copyHangul">한글 복사</button>
+    </section>
+
+    <section class="keypad" aria-label="계산기 키패드">
+      <button type="button" class="danger" data-action="clear">AC</button>
+      <button type="button" class="operator" data-action="backspace">⌫</button>
+      <button type="button" class="operator" data-action="operator" data-value="÷">÷</button>
+      <button type="button" class="operator" data-action="operator" data-value="×">×</button>
+
+      <button type="button" data-action="digit" data-value="7">7</button>
+      <button type="button" data-action="digit" data-value="8">8</button>
+      <button type="button" data-action="digit" data-value="9">9</button>
+      <button type="button" class="operator" data-action="operator" data-value="-">-</button>
+
+      <button type="button" data-action="digit" data-value="4">4</button>
+      <button type="button" data-action="digit" data-value="5">5</button>
+      <button type="button" data-action="digit" data-value="6">6</button>
+      <button type="button" class="operator" data-action="operator" data-value="+">+</button>
+
+      <button type="button" data-action="digit" data-value="1">1</button>
+      <button type="button" data-action="digit" data-value="2">2</button>
+      <button type="button" data-action="digit" data-value="3">3</button>
+      <button type="button" class="equal" data-action="equals">=</button>
+
+      <button type="button" data-action="digit" data-value="0">0</button>
+      <button type="button" data-action="decimal" data-value=".">.</button>
+      <div class="placeholder" aria-hidden="true"></div>
+      <div class="placeholder" aria-hidden="true"></div>
+    </section>
+
+  </main>
+
+  <script>
+    const expressionEl = document.getElementById("expression");
+    const resultEl = document.getElementById("result");
+    const hangulEl = document.getElementById("hangul");
+
+    const STATE = {
+      currentInput: "0",
+      firstValue: null,
+      operator: null,
+      waitingForSecond: false,
+      lastResult: null,
+    };
+
+    const OPERATORS = {
+      "+": (a, b) => a + b,
+      "-": (a, b) => a - b,
+      "×": (a, b) => a * b,
+      "÷": (a, b) => (b === 0 ? null : a / b),
+    };
+
+    const LARGE_UNITS = ["", "만", "억", "조", "경"];
+    const SMALL_UNITS = ["천", "백", "십", ""];
+    const DIGITS = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
+
+    function updateDisplay() {
+      resultEl.textContent = formatNumber(STATE.currentInput);
+      hangulEl.textContent = hangulForDisplay(STATE.currentInput);
+      expressionEl.textContent = STATE.operator && STATE.firstValue !== null
+        ? `${formatNumber(String(STATE.firstValue))} ${STATE.operator}`
+        : "\u00A0";
+    }
+
+    function formatNumber(value) {
+      if (value === "Error") return "Error";
+      if (value === "Infinity" || value === "-Infinity") return "Error";
+      const str = String(value);
+      if (str.includes(".")) {
+        const [intPart, decimalPart] = str.split(".");
+        const formattedInt = formatIntegerString(intPart);
+        return `${formattedInt}.${decimalPart}`;
+      }
+      return formatIntegerString(str);
+    }
+
+    function formatIntegerString(raw) {
+      const isNegative = raw.startsWith("-");
+      const digits = isNegative ? raw.slice(1) : raw;
+      if (digits === "" || digits === "0") return isNegative ? "-0" : "0";
+      try {
+        const bigIntValue = BigInt(digits);
+        const formatted = bigIntValue
+          .toString()
+          .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return isNegative ? `-${formatted}` : formatted;
+      } catch (error) {
+        return raw.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      }
+    }
+
+    function hangulForDisplay(value) {
+      if (value === "Error") return "오류";
+      const str = String(value);
+      if (str.includes(".")) return "소수점 지원 예정";
+      if (str === "Infinity" || str === "-Infinity") return "오류";
+      if (str === "-0") return "영";
+      const isNegative = str.startsWith("-");
+      const numericPart = isNegative ? str.slice(1) : str;
+      try {
+        const bigintValue = BigInt(numericPart);
+        const hangul = numberToHangul(bigintValue);
+        return isNegative ? `마이너스 ${hangul}` : hangul;
+      } catch (error) {
+        return "오류";
+      }
+    }
+
+    function numberToHangul(value) {
+      if (value === 0n) return "영";
+      const digits = value.toString();
+      const padded = digits.padStart(Math.ceil(digits.length / 4) * 4, "0");
+      const groups = [];
+      for (let i = 0; i < padded.length; i += 4) {
+        groups.push(padded.slice(i, i + 4));
+      }
+      const parts = [];
+      groups.forEach((group, index) => {
+        const groupValue = BigInt(group);
+        if (groupValue === 0n) return;
+        const groupText = convertGroup(group);
+        const unit = LARGE_UNITS[groups.length - index - 1] || "";
+        parts.push(`${groupText}${unit}`.trim());
+      });
+      return parts.join(" ");
+    }
+
+    function convertGroup(group) {
+      let text = "";
+      for (let i = 0; i < 4; i += 1) {
+        const digit = Number(group[i]);
+        if (digit === 0) continue;
+        const unit = SMALL_UNITS[i];
+        if (digit === 1 && unit) {
+          text += unit;
+        } else {
+          text += `${DIGITS[digit]}${unit}`;
+        }
+      }
+      return text;
+    }
+
+    function inputDigit(digit) {
+      if (STATE.waitingForSecond) {
+        STATE.currentInput = digit;
+        STATE.waitingForSecond = false;
+        updateDisplay();
+        return;
+      }
+      if (STATE.currentInput === "0") {
+        STATE.currentInput = digit;
+      } else if (STATE.currentInput === "-0") {
+        STATE.currentInput = `-${digit}`;
+      } else {
+        STATE.currentInput += digit;
+      }
+      updateDisplay();
+    }
+
+    function inputDecimal() {
+      if (STATE.waitingForSecond) {
+        STATE.currentInput = "0.";
+        STATE.waitingForSecond = false;
+        updateDisplay();
+        return;
+      }
+      if (!STATE.currentInput.includes(".")) {
+        STATE.currentInput += ".";
+      }
+      updateDisplay();
+    }
+
+    function handleOperator(nextOperator) {
+      if (!OPERATORS[nextOperator]) return;
+      if (STATE.operator && STATE.waitingForSecond) {
+        STATE.operator = nextOperator;
+        updateDisplay();
+        return;
+      }
+      const inputValue = Number(STATE.currentInput);
+      if (STATE.firstValue === null) {
+        STATE.firstValue = inputValue;
+      } else if (STATE.operator) {
+        const result = calculate(STATE.firstValue, inputValue, STATE.operator);
+        if (result === null) {
+          setError();
+          return;
+        }
+        STATE.firstValue = result;
+        STATE.currentInput = String(result);
+      }
+      STATE.operator = nextOperator;
+      STATE.waitingForSecond = true;
+      updateDisplay();
+    }
+
+    function calculate(first, second, operator) {
+      const operation = OPERATORS[operator];
+      if (!operation) return second;
+      return operation(first, second);
+    }
+
+    function handleEquals() {
+      if (!STATE.operator || STATE.waitingForSecond) return;
+      const inputValue = Number(STATE.currentInput);
+      const result = calculate(STATE.firstValue, inputValue, STATE.operator);
+      if (result === null || Number.isNaN(result)) {
+        setError();
+        return;
+      }
+      STATE.currentInput = String(result);
+      STATE.firstValue = null;
+      STATE.operator = null;
+      STATE.waitingForSecond = false;
+      updateDisplay();
+    }
+
+    function setError() {
+      STATE.currentInput = "Error";
+      STATE.firstValue = null;
+      STATE.operator = null;
+      STATE.waitingForSecond = false;
+      updateDisplay();
+    }
+
+    function handleBackspace() {
+      if (STATE.waitingForSecond && STATE.operator) {
+        STATE.operator = null;
+        updateDisplay();
+        return;
+      }
+      if (STATE.currentInput.length <= 1 || STATE.currentInput === "-0") {
+        STATE.currentInput = "0";
+      } else {
+        STATE.currentInput = STATE.currentInput.slice(0, -1);
+        if (STATE.currentInput === "-" || STATE.currentInput === "") {
+          STATE.currentInput = "0";
+        }
+      }
+      updateDisplay();
+    }
+
+    function handleClear() {
+      STATE.currentInput = "0";
+      STATE.firstValue = null;
+      STATE.operator = null;
+      STATE.waitingForSecond = false;
+      updateDisplay();
+    }
+
+    function copyText(text) {
+      if (!navigator.clipboard) {
+        alert("클립보드 복사가 지원되지 않습니다.");
+        return;
+      }
+      navigator.clipboard.writeText(text).catch(() => {
+        alert("클립보드 복사에 실패했습니다.");
+      });
+    }
+
+
+    document.querySelectorAll(".keypad button").forEach((button) => {
+      const action = button.dataset.action;
+      const value = button.dataset.value;
+      if (!action) return;
+      button.addEventListener("click", () => {
+        if (action === "digit") inputDigit(value);
+        if (action === "decimal") inputDecimal();
+        if (action === "operator") handleOperator(value);
+        if (action === "equals") handleEquals();
+        if (action === "backspace") handleBackspace();
+        if (action === "clear") handleClear();
+      });
+    });
+
+    document.getElementById("copyNumeric").addEventListener("click", () => {
+      copyText(formatNumber(STATE.currentInput));
+    });
+
+    document.getElementById("copyHangul").addEventListener("click", () => {
+      copyText(hangulForDisplay(STATE.currentInput));
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key >= "0" && event.key <= "9") {
+        inputDigit(event.key);
+        return;
+      }
+      if (event.key === ".") {
+        inputDecimal();
+        return;
+      }
+      if (event.key === "Enter" || event.key === "=") {
+        handleEquals();
+        return;
+      }
+      if (event.key === "Backspace") {
+        handleBackspace();
+        return;
+      }
+      if (event.key === "Escape") {
+        handleClear();
+        return;
+      }
+      if (["+", "-", "*", "/"].includes(event.key)) {
+        const mapped = event.key === "*" ? "×" : event.key === "/" ? "÷" : event.key;
+        handleOperator(mapped);
+      }
+    });
+
+    updateDisplay();
+  </script>
+</body>
+</html>
