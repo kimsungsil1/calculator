@@ -211,7 +211,6 @@
 
     const LARGE_UNITS = ["", "만", "억", "조", "경"];
     const SMALL_UNITS = ["천", "백", "십", ""];
-    const DIGITS = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
 
     function updateDisplay() {
       if (STATE.error) {
@@ -302,22 +301,23 @@
         if (groupValue === 0n) return;
         const groupText = convertGroup(group);
         const unit = LARGE_UNITS[groups.length - index - 1] || "";
-        parts.push(`${groupText}${unit}`.trim());
+        parts.push(`${groupText}${unit}`);
       });
-      return parts.join(" ");
+      return parts.join("");
     }
 
     function convertGroup(group) {
+      const digits = group.split("").map((digit) => Number(digit));
+      const [thousands, hundreds, tens, ones] = digits;
+      if (thousands === 0 && hundreds === 0 && tens > 0 && ones === 0) {
+        return `${tens}0`;
+      }
       let text = "";
       for (let i = 0; i < 4; i += 1) {
-        const digit = Number(group[i]);
+        const digit = digits[i];
         if (digit === 0) continue;
         const unit = SMALL_UNITS[i];
-        if (digit === 1 && unit) {
-          text += unit;
-        } else {
-          text += `${DIGITS[digit]}${unit}`;
-        }
+        text += unit ? `${digit}${unit}` : `${digit}`;
       }
       return text;
     }
